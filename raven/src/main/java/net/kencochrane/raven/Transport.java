@@ -4,11 +4,21 @@ import org.apache.commons.lang.StringUtils;
 
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSession;
+import javax.net.ssl.SSLSocketFactory;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.*;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
 
 /**
  * Transport class with default implementations for the only/popular Sentry transport methods.
@@ -224,9 +234,42 @@ public abstract class Transport {
         }
 
         protected HttpURLConnection getConnection() throws IOException {
-            return (HttpURLConnection) url.openConnection();
+            if (url.getProtocol().equalsIgnoreCase("https")) {
+                try {
+                    final TrustManager[] trustAllCerts = new TrustManager[] { new NonValidatingTrustManager() };
+                    final SSLContext sslContext = SSLContext.getInstance("SSL");
+                    sslContext.init(null, trustAllCerts, new SecureRandom());
+                    final SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
+                    HttpsURLConnection connection = (HttpsURLConnection)url.openConnection();
+                    connection.setSSLSocketFactory(sslSocketFactory);
+                    return connection;
+                } catch (NoSuchAlgorithmException nsae) {
+                    throw new RuntimeException(nsae);
+                }
+                catch (KeyManagementException kme) {
+                    throw new RuntimeException(kme);
+                }
+            }
+            else {
+                return (HttpURLConnection) url.openConnection();
+            }
         }
 
+    }
+    
+    private static class NonValidatingTrustManager implements X509TrustManager {
+        @Override
+        public void checkClientTrusted(X509Certificate[] chain, String authType)
+            throws CertificateException {
+        }
+        @Override
+        public void checkServerTrusted(X509Certificate[] chain, String authType)
+            throws CertificateException {
+        }
+        @Override
+        public X509Certificate[] getAcceptedIssuers() {
+            return null;
+        }
     }
 
     /**
